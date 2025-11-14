@@ -1,0 +1,516 @@
+{
+  "name": "website-outreach-automation",
+  "nodes": [
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "mistralai/mistral-7b-instruct",
+          "mode": "list",
+          "cachedResultName": "mistralai/mistral-7b-instruct"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1616,
+        -176
+      ],
+      "id": "fd1571f0-6e7a-4725-bdcd-8304db2a63a2",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "iarVciIkRYQiF6zq",
+          "name": "OpenAi account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.website_url }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        -272
+      ],
+      "id": "bd54748c-0be0-411b-a7eb-06ce25f7e219",
+      "name": "HTML Extractor"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Take the raw HTML from the previous node\nconst html = $json.data || \"\";\n\n// Strip script tags\nlet cleaned = html.replace(/<script[\\s\\S]*?<\\/script>/gi, \"\");\n\n// Strip style tags\ncleaned = cleaned.replace(/<style[\\s\\S]*?<\\/style>/gi, \"\");\n\n// Remove all HTML tags\ncleaned = cleaned.replace(/<[^>]+>/g, \" \");\n\n// Collapse whitespace\ncleaned = cleaned.replace(/\\s+/g, \" \").trim();\n\n// Limit to 15,000 characters to avoid token overflow\ncleaned = cleaned.slice(0, 15000);\n\nreturn [\n  {\n    json: {\n      text: cleaned\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        -400
+      ],
+      "id": "3003347d-039a-4b0e-8144-a174627b4090",
+      "name": "Clean HTML"
+    },
+    {
+      "parameters": {
+        "jsCode": "const text = $json.text || \"\";\n\nconst emails = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/gi);\n\nreturn [\n  {\n    json: {\n      email: emails ? emails[0] : null,\n      allEmails: emails || []\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        -400
+      ],
+      "id": "c6070344-77c2-4223-9765-42c03641af31",
+      "name": "Email Extractor"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Summarize the company based ONLY on visible text in this website HTML. \nReturn 2–3 sentences describing what the company does.\n\nHTML:\n{{ $('Clean HTML').item.json.text }}\n",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You analyze raw website HTML and extract clean summaries.  Focus on what the company actually does, their sector, and major offerings. Return 2–3 concise sentences with no fluff."
+            },
+            {
+              "type": "HumanMessagePromptTemplate",
+              "message": "=Summarize the company based on the HTML provided.  HTML: {{ $('Clean HTML').item.j"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        1536,
+        -400
+      ],
+      "id": "1921a1e1-aecf-4fdf-bbc5-4210887dc826",
+      "name": "Company Summary"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Write a short, warm outreach email and subject line on behalf of Jem Geronimo, Managing Director at CompanyX, aimed at decision-makers in the logistics sector.\n\nConstraints:\n• Tone: practical, clear, human, Dutch business style.\n• Max 200 words.\n• No marketing fluff or clichés.\n• Use the company summary below.\n• If the company is NOT in logistics, write a general \"observational\" outreach email.\n• Use a single friendly CTA.\n\nInput variables:\ncompany_summary: {{ $json.summary }}\ncontact_email: {{ $json.email }}\n\nFORMAT:\nReturn output in this EXACT format (no JSON, no quotes):\n\n###SUBJECT###\n<subject here>\n\n###BODY###\n<body here>\n",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "Prompt can be tweaked: Write a short, warm outreach email and subject body on behalf of Jem Geronimo, Managing Director at CompanyX, aimed at decision-makers in the logistics sector.\nYour goal is to start a meaningful, human conversation — not to sell. Follow these instructions strictly.\n:email: Tone & Style\nPractical, clear, and human.\nDown-to-earth and relatable — the tone should feel natural to a Dutch business reader.\nShort sentences.\nNo marketing language, buzzwords, drama, or clichés.\nLength: Maximum 200 words.\n:white_check_mark: Tone tip: The email should read as if Jesper is sharing observations from the field, not writing a sales email.\n:mailbox_with_mail: Email Structure\nGreeting:\nIf contact_first_name is known → Hi {{contact_first_name}},\nElse if contact_full_name is known → Hi {{contact_full_name}},\nElse if fallback name is provided → Hi {{fallback_first_name}},\nElse → Hello,\nParagraph 1 – Relevance & Appreciation (1–2 sentences):\nShow you understand who they are or what they do (based on site_summary).\nBe specific and concrete — mention their focus area, sector, or values. Avoid using generic openers such as \"I appreciate/am impressed by what you do\", instead use this or tweak it slightly to reflect what the company does - [Insert company name] has come up a few times in conversations I’ve had with logistics professionals here in Netherlands — particularly around [their specialty or known project].\nMention the company name once here. After that, refer to “your team” or “your operations.”\nParagraph 2 – Benefit & How (2–3 sentences):\nMake a smooth transition from Paragraph 1. Start with a clear, specific outcome (e.g. “cutting planning time by 50%”) instead of vague “AI can help you.”\nIdentify a real, admin-heavy logistics task (e.g. scheduling, documentation, dispatching, planning).\n:white_check_mark: Authority & credibility: Phrase outcomes as if CompanyX is actively involved, not just observing. Use language like:\n“Teams we work with are cutting time…”\n“Some of the companies we support are…”\n“In recent projects, our clients have…”\n:white_check_mark: Explain clearly how this is achieved in practice, focusing on the workflow automation angle. Include one sentence that shows a practical, low-barrier approach — for example:\n“By combining simple AI tools with workflow automation…”\n“Through small, practical steps — like using ChatGPT to speed up route planning and auto-generate documents…”\n“By layering automation onto existing systems rather than replacing them…”\nUse phrases like “In recent projects…”, “Some teams…”, or “One company we worked with…” to build credibility without sounding like a pitch.\nIf no real-world example exists, make a reasonable, believable assumption about the potential impact.\n:white_check_mark: Important: Use observational and collaborative language. Avoid “we can help” and instead use phrasing like:\n“In recent projects, teams have…”\n“We’ve seen companies streamline…”\n“One company reduced manual errors by…”\nParagraph 3 – Call to Action (1 sentence):\nEnd with a friendly, low-pressure invitation to talk.\nExample: “Would you be open to a short conversation next week to explore if this might be relevant for your operations?”\nSign-off:\nKind regards,  \nJem Geronimo  \nManaging Director  \nCompanyX\n:test_tube: Additional Requirements\nThe email should immediately show a concrete benefit (time saved, costs reduced, efficiency gained).\nAlways use sector-specific language — the email should clearly feel written for that sector.\nInclude at least one sentence explaining the “how” in simple, practical terms, with a workflow automation focus.\nKeep the tone peer-to-peer, observational, and grounded — Jesper should sound like someone sharing useful insights from real experience.\n:white_check_mark: Goal: The reader should think: “They understand our world, this is practical, and it’s worth a short conversation.”\n"
+            },
+            {
+              "type": "HumanMessagePromptTemplate",
+              "message": "company_summary: {{company_summary}}\ncontact_first_name: {{contact_first_name}}\ncontact_full_name: {{contact_full_name}}\nfallback_first_name: {{fallback_first_name}}\ntone: {{tone}}\n\nGenerate the JSON output according to the system instructions.\n"
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        2112,
+        -400
+      ],
+      "id": "d6c23733-a7a1-4972-a43a-c60801b737c2",
+      "name": "Email Draft Generator"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "007cdeeb-f778-478c-a716-cad06ed506dd",
+              "name": "summary",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "5a77d842-49b7-4c9a-93dc-624f801a5f84",
+              "name": "email",
+              "value": "={{ $('Email Extractor').item.json.email }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1888,
+        -400
+      ],
+      "id": "cf084831-efc7-4fcb-b13f-a2ed25bcc092",
+      "name": "Set Summary and Email"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.text || \"\";\n\n// Extract subject\nconst subjectMatch = raw.match(/###SUBJECT###\\s*([\\s\\S]*?)\\s*###BODY###/);\nconst subject = subjectMatch ? subjectMatch[1].trim() : \"\";\n\n// Extract body\nconst bodyMatch = raw.match(/###BODY###\\s*([\\s\\S]*)/);\nconst email_body = bodyMatch ? bodyMatch[1].trim() : \"\";\n\nreturn [\n  {\n    json: {\n      subject,\n      email_body,\n      raw_output: raw\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2464,
+        -400
+      ],
+      "id": "040ca974-3c1f-45b9-95c2-0715f513d059",
+      "name": "Parse Email"
+    },
+    {
+      "parameters": {
+        "resource": "draft",
+        "subject": "={{ $json.subject }}",
+        "bodyContent": "={{ $json.email_body }}",
+        "additionalFields": {
+          "toRecipients": "={{ $('Set Summary and Email').item.json.email }}"
+        }
+      },
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "typeVersion": 2,
+      "position": [
+        2688,
+        -400
+      ],
+      "id": "831859ff-2302-405a-929e-7709cc6d680a",
+      "name": "Draft Email",
+      "webhookId": "b1cf0360-eef5-4bf1-83ed-97fb9491636e",
+      "credentials": {
+        "microsoftOutlookOAuth2Api": {
+          "id": "YrxRX3yudUiOUd9r",
+          "name": "Microsoft Outlook account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "chatMessage",
+        "chatId": {
+          "__rl": true,
+          "value": "19:17676f80-d7c5-4fd3-b5b8-26bd41de03f4_54f62e65-880a-45db-88a6-da650d769a62@unq.gbl.spaces",
+          "mode": "list",
+          "cachedResultName": "John Doe, Jem Geronimo (oneOnOne)",
+          "cachedResultUrl": "https://teams.microsoft.com/l/chat/19%3A17676f80-d7c5-4fd3-b5b8-26bd41de03f4_54f62e65-880a-45db-88a6-da650d769a62%40unq.gbl.spaces/0?tenantId=427d6ea8-0d69-4795-902d-c57f7a3034a3"
+        },
+        "message": "=Your Outlook email draft for {{ $json.toRecipients[0].emailAddress.name }} is now ready 🎉",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftTeams",
+      "typeVersion": 2,
+      "position": [
+        2912,
+        -272
+      ],
+      "id": "aedeb0c4-47ce-4bb1-8dea-7daf3af501d8",
+      "name": "Create chat message",
+      "webhookId": "ff9101f1-ccc2-4b1c-8661-4925b4814c77",
+      "credentials": {
+        "microsoftTeamsOAuth2Api": {
+          "id": "bnYiiEXX6ngABcyP",
+          "name": "Microsoft Teams account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "formTitle": "CompanyX Website Intake",
+        "formDescription": "Upload an Excel file or paste website URLs below. The automation will process each site and prepare email drafts.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "website_file",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".xls, .xlsx"
+            },
+            {
+              "fieldLabel": "website_list",
+              "placeholder": "example.com\\nanother.com"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        -32,
+        -272
+      ],
+      "id": "9ff56fe4-70aa-4c1a-8d37-22597742f798",
+      "name": "On form submission",
+      "webhookId": "5dc3101e-dd73-4af8-8ba3-67e657ef0006"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a69c8e79-f9ea-429c-b92a-221ab8c84d96",
+              "leftValue": "={{ $json.website_file }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        192,
+        -272
+      ],
+      "id": "0301d2aa-17d7-48a5-a2f1-27c145b6f28f",
+      "name": "Check Input Type"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "binaryPropertyName": "=website_file",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        416,
+        -368
+      ],
+      "id": "dc3674a0-9f61-4b49-aae4-51ad3e572fbb",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.website_list || \"\";\n\n// Split by new lines, commas, spaces, or semicolons\nlet urls = raw\n  .split(/[\\n,; ]+/)\n  .map(u => u.trim())\n  .filter(u => u.length > 0);\n\n// Add https:// if missing\nurls = urls.map(u => {\n  if (!u.startsWith(\"http://\") && !u.startsWith(\"https://\")) {\n    return \"https://\" + u;\n  }\n  return u;\n});\n\n// Convert to item array\nreturn urls.map(url => ({\n  json: { website_url: url }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        -176
+      ],
+      "id": "8a175989-1436-47c6-accb-f0e7d3838e95",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        864,
+        -272
+      ],
+      "id": "349cee4a-df45-4bd2-a036-12bb7473da20",
+      "name": "Loop Over Items"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Company Summary",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Email Draft Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML Extractor": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean HTML": {
+      "main": [
+        [
+          {
+            "node": "Email Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Extractor": {
+      "main": [
+        [
+          {
+            "node": "Company Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Summary": {
+      "main": [
+        [
+          {
+            "node": "Set Summary and Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Summary and Email": {
+      "main": [
+        [
+          {
+            "node": "Email Draft Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Draft Generator": {
+      "main": [
+        [
+          {
+            "node": "Parse Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Email": {
+      "main": [
+        [
+          {
+            "node": "Draft Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Email": {
+      "main": [
+        [
+          {
+            "node": "Create chat message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Check Input Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Input Type": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "HTML Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "HTML Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Clean HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create chat message": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "8d386564-e609-41ec-83db-0749ec1195de",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "56403985861bef8cf1d38cd2d3551a759587f7b54bc1568b9a78c7e04fd1be5a"
+  },
+  "id": "WXSjMlHnN7GchlWz",
+  "tags": []
+}
